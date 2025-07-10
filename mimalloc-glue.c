@@ -84,13 +84,15 @@ void* resolve_func(const char* symbol) {
     // no libc -> bad
     void *libc_so = dlopen("libc.so.6", RTLD_NOW | RTLD_NOLOAD);
     if (!libc_so) {
-        exit(-1);
+        fprintf(stderr, "libc.so.6 not loaded\n");
+        abort();
     }
 
     // no mimalloc -> bad
     void *libmimalloc_so = dlopen("libmimalloc.so", RTLD_NOW);
     if (!libmimalloc_so) {
-        exit(-1);
+        fprintf(stderr, "Failed to load libmimalloc.so\n");
+        abort();
     }
 
     // address of the symbol in libc
