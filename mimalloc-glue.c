@@ -2,6 +2,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// _Nullable is a clang extension
+#if !defined(__clang__)
+#define _Nullable
+#endif
+
 /**
  * Override the malloc interface with mimalloc versions
  * if they would be the libc version without (hopefully)

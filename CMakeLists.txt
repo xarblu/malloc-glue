@@ -5,9 +5,6 @@ project(
     LANGUAGES C
 )
 
-# apparently we're using clang extensions
-set(CMAKE_C_COMPILER clang)
-
 # libmimalloc-glue.so
 add_library(mimalloc-glue SHARED mimalloc-glue.c)
 target_sources(mimalloc-glue PRIVATE mimalloc-glue.c)
