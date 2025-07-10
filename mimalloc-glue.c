@@ -97,20 +97,55 @@ void* resolve_func(const char* symbol) {
 
     // address of the symbol in libc
     void* libc_sym = dlsym(libc_so, symbol);
+#ifndef NDEBUG
+    if (libc_sym) {
+        fprintf(stderr, "%s() found in libc: %p\n", symbol, libc_sym);
+    } else {
+        fprintf(stderr, "%s() not found in libc\n", symbol);
+    }
+#endif
 
     // address of the symbol in mimalloc
     void* libmimalloc_sym = dlsym(libmimalloc_so, symbol);
+#ifndef NDEBUG
+    if (libmimalloc_sym) {
+        fprintf(stderr, "%s() found in libmimalloc: %p\n", symbol, libmimalloc_sym);
+    } else {
+        fprintf(stderr, "%s() not found in libmimalloc\n", symbol);
+    }
+#endif
 
     // address of the next (in search order) symbol
     void* next_sym = dlsym(RTLD_NEXT, symbol);
+#ifndef NDEBUG
+    if (next_sym) {
+        fprintf(stderr, "%s() next in search order: %p\n", symbol, next_sym);
+    } else {
+        fprintf(stderr, "%s() not in any loaded object\n", symbol);
+    }
+#endif
+
+    // if next is NULL we don't want to map it here either
+    if (!next_sym) {
+#ifndef NDEBUG
+        fprintf(stderr, "%s() leaving undefined\n", symbol);
+#endif
+        return NULL;
+    }
 
     // if next is either libc default or mimalloc select it
     if (next_sym == libc_sym || next_sym == libmimalloc_sym) {
+#ifndef NDEBUG
+        fprintf(stderr, "%s() selected from mimalloc: %p\n", symbol, libmimalloc_sym);
+#endif
         return libmimalloc_sym;
     }
 
     // if not that means another library already claimed the symbol
     // use that version then
+#ifndef NDEBUG
+    fprintf(stderr, "%s() selected from search path: %p\n", symbol, next_sym);
+#endif
     return next_sym;
 }
 
