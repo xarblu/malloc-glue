@@ -81,8 +81,8 @@ static malloc_lut lut = {
     NULL
 };
 
-static void *libc_so = NULL;
-static void *libmimalloc_so = NULL;
+static void* libc_so = NULL;
+static void* libmimalloc_so = NULL;
 
 /**
  * Resolve a function named symbol
@@ -219,6 +219,10 @@ static void init(void) {
     lut.posix_memalign = dlsym(RTLD_NEXT, "posix_memalign");
     lut._posix_memalign = dlsym(RTLD_NEXT, "_posix_memalign");
 
+#ifndef NDEBUG
+    fprintf(stderr, "Temporary malloc set\n");
+#endif
+
     // now resolve
     void* malloc = resolve_func("malloc");
     void* calloc = resolve_func("calloc");
@@ -240,6 +244,10 @@ static void init(void) {
     void* aligned_alloc = resolve_func("aligned_alloc");
     void* posix_memalign = resolve_func("posix_memalign");
     void* _posix_memalign = resolve_func("_posix_memalign");
+
+#ifndef NDEBUG
+    fprintf(stderr, "All functions resolved\n");
+#endif
 
     // finally bulk update
     lut.malloc = malloc;
@@ -289,7 +297,11 @@ static void check_defined(void* symbol, const char* name) {
 void* malloc(size_t size) {
     init();
     check_defined(lut.malloc, "malloc");
-    return lut.malloc(size);
+    void* ret = lut.malloc(size);
+#ifndef NDEBUG
+    fprintf(stderr, "malloc(%p) -> %p\n", lut.malloc, ret);
+#endif
+    return ret;
 }
 
 // malloc(3)
@@ -308,6 +320,9 @@ void* realloc(void *_Nullable ptr, size_t size) {
 
 // malloc(3)
 void free(void *_Nullable ptr) {
+#ifndef NDEBUG
+    fprintf(stderr, "free(%p) -> %p\n", lut.free, ptr);
+#endif
     init();
     check_defined(lut.free, "free");
     lut.free(ptr);
@@ -424,3 +439,20 @@ int _posix_memalign(void **memptr, size_t alignment, size_t size) {
     check_defined(lut._posix_memalign, "_posix_memalign");
     return lut._posix_memalign(memptr, alignment, size);
 }
+
+/*
+void* dlopen(const char* filename, int flags) {
+    fprintf(stderr, "Someone asked for %s\n", filename);
+    void* (*real)(const char*, int) = dlsym(RTLD_NEXT, "dlopen");
+    return real(filename, flags);
+}
+*/
+
+/*
+int dlclose(void* handle) {
+    fprintf(stderr, "Screw your stupid handle %p\n", handle);
+    return 0;
+    int (*real)(void*) = dlsym(RTLD_NEXT, "dlclose");
+    return real(handle);
+}
+*/
