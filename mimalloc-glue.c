@@ -1,6 +1,9 @@
 #include <dlfcn.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
+#define __USE_GNU // PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP
+#include <pthread.h>
 
 // _Nullable is a clang extension
 #if !defined(__clang__)
@@ -28,6 +31,7 @@ typedef struct malloc_lut {
     void* (*calloc)(size_t, size_t);
     void* (*realloc)(void *_Nullable, size_t);
     void (*free)(void *_Nullable);
+
     char* (*strdup)(const char*);
     char* (*strndup)(const char*, size_t);
     char* (*realpath)(const char*, char*);
@@ -38,6 +42,7 @@ typedef struct malloc_lut {
     size_t (*malloc_usable_size)(void *_Nullable);
     size_t (*malloc_good_size)(size_t);
     void (*cfree)(void*);
+
     void* (*valloc)(size_t);
     void* (*pvalloc)(size_t);
     void* (*reallocarray)(void *_Nullable, size_t, size_t);
@@ -89,7 +94,7 @@ static void* resolve_func(const char* symbol) {
     }
 
     // no mimalloc -> bad
-    void *libmimalloc_so = dlopen("libmimalloc.so", RTLD_NOW);
+    void *libmimalloc_so = dlopen("libmimalloc.so", RTLD_LAZY);
     if (!libmimalloc_so) {
         fprintf(stderr, "Failed to load libmimalloc.so\n");
         abort();
@@ -149,11 +154,19 @@ static void* resolve_func(const char* symbol) {
     return next_sym;
 }
 
+static pthread_mutex_t mutex = PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP;
+
 /**
  * Check if a symbol is defined (not NULL)
  * if it isn't abort
  */
 static void check_defined(void* symbol, const char* name) {
+    if (pthread_mutex_lock(&mutex) == EDEADLK) {
+        // EDEADLK -> we are the initialising thread
+        // all expected and good
+        return;
+    }
+    pthread_mutex_unlock(&mutex);
     if (symbol == NULL) {
         fprintf(stderr, "%s() is not defined\n", name);
         abort();
@@ -168,6 +181,8 @@ static void check_defined(void* symbol, const char* name) {
  * and replace all symbols with their equivalent version from it.
  */
 __attribute__((constructor)) static void init(void) {
+    pthread_mutex_lock(&mutex);
+
     // temporarily set defaults for resolve_func() to work
     lut.malloc = dlsym(RTLD_NEXT, "malloc");
     lut.calloc = dlsym(RTLD_NEXT, "calloc");
@@ -233,6 +248,8 @@ __attribute__((constructor)) static void init(void) {
     lut.aligned_alloc = aligned_alloc;
     lut.posix_memalign = posix_memalign;
     lut._posix_memalign = _posix_memalign;
+
+    pthread_mutex_unlock(&mutex);
 }
 
 // All the wrappers
