@@ -80,7 +80,7 @@ static malloc_lut lut = {
  * If RTLD_NEXT is from libc return custom
  * else return whatever it is
  */
-void* resolve_func(const char* symbol) {
+static void* resolve_func(const char* symbol) {
     // no libc -> bad
     void *libc_so = dlopen("libc.so.6", RTLD_NOW | RTLD_NOLOAD);
     if (!libc_so) {
@@ -153,7 +153,7 @@ void* resolve_func(const char* symbol) {
  * Check if a symbol is defined (not NULL)
  * if it isn't abort
  */
-void check_defined(void* symbol, const char* name) {
+static void check_defined(void* symbol, const char* name) {
     if (symbol == NULL) {
         fprintf(stderr, "%s() is not defined\n", name);
         abort();
@@ -167,7 +167,7 @@ void check_defined(void* symbol, const char* name) {
  * Once we have working malloc we load our custom malloc shared object
  * and replace all symbols with their equivalent version from it.
  */
-__attribute__((constructor)) void init(void) {
+__attribute__((constructor)) static void init(void) {
     // temporarily set defaults for resolve_func() to work
     lut.malloc = dlsym(RTLD_NEXT, "malloc");
     lut.calloc = dlsym(RTLD_NEXT, "calloc");
