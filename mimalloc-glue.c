@@ -81,24 +81,31 @@ static malloc_lut lut = {
     NULL
 };
 
+static void *libc_so = NULL;
+static void *libmimalloc_so = NULL;
+
 /**
  * Resolve a function named symbol
  * If RTLD_NEXT is from libc return custom
  * else return whatever it is
  */
 static void* resolve_func(const char* symbol) {
-    // no libc -> bad
-    void *libc_so = dlopen("libc.so.6", RTLD_NOW | RTLD_NOLOAD);
+    // try to get a handle for existing libc
     if (!libc_so) {
-        fprintf(stderr, "libc.so.6 not loaded\n");
-        abort();
+        libc_so = dlopen("libc.so.6", RTLD_LAZY | RTLD_NOLOAD);
+        if (!libc_so) {
+            fprintf(stderr, "libc.so.6 not loaded\n");
+            abort();
+        }
     }
 
-    // no mimalloc -> bad
-    void *libmimalloc_so = dlopen("libmimalloc.so", RTLD_LAZY);
+    // try to load and get a handle for libmimalloc
     if (!libmimalloc_so) {
-        fprintf(stderr, "Failed to load libmimalloc.so\n");
-        abort();
+        libmimalloc_so = dlopen("libmimalloc.so", RTLD_LAZY | RTLD_LOCAL);
+        if (!libmimalloc_so) {
+            fprintf(stderr, "Failed to load libmimalloc.so\n");
+            abort();
+        }
     }
 
     // address of the symbol in libc
