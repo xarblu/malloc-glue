@@ -14,7 +14,9 @@
  * https://www.gnu.org/software/libc/manual/html_node/Replacing-malloc.html
  */
 
-// lookup table for already resolved symbols
+/**
+ * lookup table for resolved symbols
+ */
 typedef struct malloc_lut {
     // Standard C allocation
     void* (*malloc)(size_t);
@@ -41,7 +43,11 @@ typedef struct malloc_lut {
     int (*_posix_memalign)(void **, size_t, size_t);
 } malloc_lut;
 
-malloc_lut lut = {
+/**
+ * Global instance of our LUT to actually
+ * store the symbols
+ */
+static malloc_lut lut = {
     NULL,
     NULL,
     NULL,
@@ -101,14 +107,25 @@ void* resolve_func(const char* symbol) {
     return next_sym;
 }
 
-void initialise_lut() {
-    // if init is called twice thats bad
-    // - we're missing a function
-    if (lut.malloc) {
-        fprintf(stderr, "initialise_lut() called twice - we probably don't have all requested functions\n");
-        exit(-1);
+/**
+ * Check if a symbol is defined (not NULL)
+ * if it isn't abort
+ */
+void check_defined(void* symbol, const char* name) {
+    if (symbol == NULL) {
+        fprintf(stderr, "%s() is not defined\n", name);
+        abort();
     }
+}
 
+/**
+ * Initialisation to call on load.
+ * This initially sets a default "real" malloc interface
+ * for following dlopen() calls to work.
+ * Once we have working malloc we load our custom malloc shared object
+ * and replace all symbols with their equivalent version from it.
+ */
+__attribute__((constructor)) void init(void) {
     // temporarily set defaults for resolve_func() to work
     lut.malloc = dlsym(RTLD_NEXT, "malloc");
     lut.calloc = dlsym(RTLD_NEXT, "calloc");
@@ -180,160 +197,120 @@ void initialise_lut() {
 
 // malloc(3)
 void* malloc(size_t size) {
-    if (!lut.malloc) {
-        initialise_lut();
-    }
+    check_defined(lut.malloc, "malloc");
     return lut.malloc(size);
 }
 
 // malloc(3)
 void* calloc(size_t n, size_t size) {
-    if (!lut.calloc) {
-        initialise_lut();
-    }
+    check_defined(lut.calloc, "calloc");
     return lut.calloc(n, size);
 }
 
 // malloc(3)
 void* realloc(void *_Nullable ptr, size_t size) {
-    if (!lut.realloc) {
-        initialise_lut();
-    }
+    check_defined(lut.realloc, "realloc");
     return lut.realloc(ptr, size);
 }
 
 // malloc(3)
 void free(void *_Nullable ptr) {
-    if (!lut.free) {
-        initialise_lut();
-    }
+    check_defined(lut.free, "free");
     lut.free(ptr);
 }
 
 // strdup(3)
 char *strdup(const char *s) {
-    if (!lut.strdup) {
-        initialise_lut();
-    }
+    check_defined(lut.strdup, "strdup");
     return lut.strdup(s);
 }
 
 // strdup(3)
 char *strndup(const char *s, size_t n) {
-    if (!lut.strndup) {
-        initialise_lut();
-    }
+    check_defined(lut.strndup, "strndup");
     return lut.strndup(s, n);
 }
 
 // realpath(3)
 char *realpath(const char *path, char *resolved_path) {
-    if (!lut.realpath) {
-        initialise_lut();
-    }
+    check_defined(lut.realpath, "realpath");
     return lut.realpath(path, resolved_path);
 }
 
 // reallocf(3bsd)
 void *reallocf(void *ptr, size_t size) {
-    if (!lut.reallocf) {
-        initialise_lut();
-    }
+    check_defined(lut.reallocf, "reallocf");
     return lut.reallocf(ptr, size);
 }
 
 // malloc_usable_size(3)
 size_t malloc_size(void *ptr) {
-    if (!lut.malloc_size) {
-        initialise_lut();
-    }
+    check_defined(lut.malloc_size, "malloc_size");
     return lut.malloc_size(ptr);
 }
 
 // malloc_usable_size(3)
 size_t malloc_usable_size(void *_Nullable ptr) {
-    if (!lut.malloc_usable_size) {
-        initialise_lut();
-    }
+    check_defined(lut.malloc_usable_size, "malloc_usable_size");
     return lut.malloc_usable_size(ptr);
 }
 
 // malloc_usable_size(3)
 size_t malloc_good_size(size_t size) {
-    if (!lut.malloc_good_size) {
-        initialise_lut();
-    }
+    check_defined(lut.malloc_good_size, "malloc_good_size");
     return lut.malloc_good_size(size);
 }
 
 // cfree(3)
 void cfree(void *ptr) {
-    if (!lut.cfree) {
-        initialise_lut();
-    }
+    check_defined(lut.cfree, "cfree");
     return lut.cfree(ptr);
 }
 
 // posix_memalign(3)
 [[deprecated]] void *valloc(size_t size) {
-    if (!lut.valloc) {
-        initialise_lut();
-    }
+    check_defined(lut.valloc, "valloc");
     return lut.valloc(size);
 }
 
 // posix_memalign(3)
 [[deprecated]] void *pvalloc(size_t size) {
-    if (!lut.pvalloc) {
-        initialise_lut();
-    }
+    check_defined(lut.pvalloc, "pvalloc");
     return lut.pvalloc(size);
 }
 
 // malloc(3)
 void *reallocarray(void *_Nullable ptr, size_t n, size_t size) {
-    if (!lut.reallocarray) {
-        initialise_lut();
-    }
+    check_defined(lut.reallocarray, "reallocarray");
     return lut.reallocarray(ptr, n, size);
 }
 
 // reallocarr(3)
 int reallocarr(void *_Nullable ptr, size_t n, size_t size) {
-    if (!lut.reallocarr) {
-        initialise_lut();
-    }
+    check_defined(lut.reallocarr, "reallocarr");
     return lut.reallocarr(ptr, n, size);
 }
 
 // posix_memalign(3)
 [[deprecated]] void *memalign(size_t alignment, size_t size) {
-    if (!lut.memalign) {
-        initialise_lut();
-    }
+    check_defined(lut.memalign, "memalign");
     return lut.memalign(alignment, size);
 }
 
 // posix_memalign(3)
 void *aligned_alloc(size_t alignment, size_t size) {
-    if (!lut.aligned_alloc) {
-        initialise_lut();
-    }
+    check_defined(lut.aligned_alloc, "aligned_alloc");
     return lut.aligned_alloc(alignment, size);
 }
 
 // posix_memalign(3)
 int posix_memalign(void **memptr, size_t alignment, size_t size) {
-    if (!lut.posix_memalign) {
-        initialise_lut();
-    }
+    check_defined(lut.posix_memalign, "posix_memalign");
     return lut.posix_memalign(memptr, alignment, size);
 }
 
 // posix_memalign(3)
 int _posix_memalign(void **memptr, size_t alignment, size_t size) {
-    if (!lut._posix_memalign) {
-        initialise_lut();
-    }
+    check_defined(lut._posix_memalign, "_posix_memalign");
     return lut._posix_memalign(memptr, alignment, size);
 }
