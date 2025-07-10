@@ -1,6 +1,7 @@
 #include <dlfcn.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <errno.h>
 #define __USE_GNU // PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP
 #include <pthread.h>
@@ -155,23 +156,7 @@ static void* resolve_func(const char* symbol) {
 }
 
 static pthread_mutex_t mutex = PTHREAD_ERRORCHECK_MUTEX_INITIALIZER_NP;
-
-/**
- * Check if a symbol is defined (not NULL)
- * if it isn't abort
- */
-static void check_defined(void* symbol, const char* name) {
-    if (pthread_mutex_lock(&mutex) == EDEADLK) {
-        // EDEADLK -> we are the initialising thread
-        // all expected and good
-        return;
-    }
-    pthread_mutex_unlock(&mutex);
-    if (symbol == NULL) {
-        fprintf(stderr, "%s() is not defined\n", name);
-        abort();
-    }
-}
+static bool initialized = false;
 
 /**
  * Initialisation to call on load.
@@ -179,9 +164,31 @@ static void check_defined(void* symbol, const char* name) {
  * for following dlopen() calls to work.
  * Once we have working malloc we load our custom malloc shared object
  * and replace all symbols with their equivalent version from it.
+ *
+ * This can't use __attribute__((constructor)) because we can't predict
+ * the order in which the dynamic linker calls these init hooks
  */
-__attribute__((constructor)) static void init(void) {
-    pthread_mutex_lock(&mutex);
+static void init(void) {
+    if (initialized) {
+        return;
+    }
+
+    // EDEADLK -> we are the initialising thread
+    // all expected and good... I think
+    // ... we *should* have the temporary init malloc
+    if (pthread_mutex_lock(&mutex) == EDEADLK) {
+        return;
+    }
+
+    // catch potential threads that waited for init to complete
+    if (initialized) {
+        pthread_mutex_unlock(&mutex);
+        return;
+    }
+
+#ifndef NDEBUG
+    fprintf(stderr, "Starting initialisation\n");
+#endif
 
     // temporarily set defaults for resolve_func() to work
     lut.malloc = dlsym(RTLD_NEXT, "malloc");
@@ -249,127 +256,164 @@ __attribute__((constructor)) static void init(void) {
     lut.posix_memalign = posix_memalign;
     lut._posix_memalign = _posix_memalign;
 
+#ifndef NDEBUG
+    fprintf(stderr, "Finished initialisation\n");
+#endif
+
+    initialized = true;
     pthread_mutex_unlock(&mutex);
 }
+
+/**
+ * Check if a symbol is defined (not NULL)
+ * if it isn't abort
+ */
+static void check_defined(void* symbol, const char* name) {
+    if (symbol == NULL) {
+        fprintf(stderr, "%s() is not defined\n", name);
+        abort();
+    }
+}
+
 
 // All the wrappers
 
 // malloc(3)
 void* malloc(size_t size) {
+    init();
     check_defined(lut.malloc, "malloc");
     return lut.malloc(size);
 }
 
 // malloc(3)
 void* calloc(size_t n, size_t size) {
+    init();
     check_defined(lut.calloc, "calloc");
     return lut.calloc(n, size);
 }
 
 // malloc(3)
 void* realloc(void *_Nullable ptr, size_t size) {
+    init();
     check_defined(lut.realloc, "realloc");
     return lut.realloc(ptr, size);
 }
 
 // malloc(3)
 void free(void *_Nullable ptr) {
+    init();
     check_defined(lut.free, "free");
     lut.free(ptr);
 }
 
 // strdup(3)
 char *strdup(const char *s) {
+    init();
     check_defined(lut.strdup, "strdup");
     return lut.strdup(s);
 }
 
 // strdup(3)
 char *strndup(const char *s, size_t n) {
+    init();
     check_defined(lut.strndup, "strndup");
     return lut.strndup(s, n);
 }
 
 // realpath(3)
 char *realpath(const char *path, char *resolved_path) {
+    init();
     check_defined(lut.realpath, "realpath");
     return lut.realpath(path, resolved_path);
 }
 
 // reallocf(3bsd)
 void *reallocf(void *ptr, size_t size) {
+    init();
     check_defined(lut.reallocf, "reallocf");
     return lut.reallocf(ptr, size);
 }
 
 // malloc_usable_size(3)
 size_t malloc_size(void *ptr) {
+    init();
     check_defined(lut.malloc_size, "malloc_size");
     return lut.malloc_size(ptr);
 }
 
 // malloc_usable_size(3)
 size_t malloc_usable_size(void *_Nullable ptr) {
+    init();
     check_defined(lut.malloc_usable_size, "malloc_usable_size");
     return lut.malloc_usable_size(ptr);
 }
 
 // malloc_usable_size(3)
 size_t malloc_good_size(size_t size) {
+    init();
     check_defined(lut.malloc_good_size, "malloc_good_size");
     return lut.malloc_good_size(size);
 }
 
 // cfree(3)
 void cfree(void *ptr) {
+    init();
     check_defined(lut.cfree, "cfree");
     return lut.cfree(ptr);
 }
 
 // posix_memalign(3)
 [[deprecated]] void *valloc(size_t size) {
+    init();
     check_defined(lut.valloc, "valloc");
     return lut.valloc(size);
 }
 
 // posix_memalign(3)
 [[deprecated]] void *pvalloc(size_t size) {
+    init();
     check_defined(lut.pvalloc, "pvalloc");
     return lut.pvalloc(size);
 }
 
 // malloc(3)
 void *reallocarray(void *_Nullable ptr, size_t n, size_t size) {
+    init();
     check_defined(lut.reallocarray, "reallocarray");
     return lut.reallocarray(ptr, n, size);
 }
 
 // reallocarr(3)
 int reallocarr(void *_Nullable ptr, size_t n, size_t size) {
+    init();
     check_defined(lut.reallocarr, "reallocarr");
     return lut.reallocarr(ptr, n, size);
 }
 
 // posix_memalign(3)
 [[deprecated]] void *memalign(size_t alignment, size_t size) {
+    init();
     check_defined(lut.memalign, "memalign");
     return lut.memalign(alignment, size);
 }
 
 // posix_memalign(3)
 void *aligned_alloc(size_t alignment, size_t size) {
+    init();
     check_defined(lut.aligned_alloc, "aligned_alloc");
     return lut.aligned_alloc(alignment, size);
 }
 
 // posix_memalign(3)
 int posix_memalign(void **memptr, size_t alignment, size_t size) {
+    init();
     check_defined(lut.posix_memalign, "posix_memalign");
     return lut.posix_memalign(memptr, alignment, size);
 }
 
 // posix_memalign(3)
 int _posix_memalign(void **memptr, size_t alignment, size_t size) {
+    init();
     check_defined(lut._posix_memalign, "_posix_memalign");
     return lut._posix_memalign(memptr, alignment, size);
 }
